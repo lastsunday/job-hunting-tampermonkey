@@ -4,7 +4,7 @@
 
 ## 运行截图
 
-<img src="docs\introduction\tampermonkey-51job.png" alt="chrome_extension_sidepanel_open" width="600px"/>
+<img src="https://raw.githubusercontent.com/lastsunday/job-hunting-tampermonkey/main/docs/introduction/tampermonkey-51job.png" alt="chrome_extension_sidepanel_open" width="600px"/>
 
 ## 招聘平台支持列表
 
