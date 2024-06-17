@@ -4,6 +4,7 @@
 // @version      1.0.0
 // @description  协助找工作，方便职位的浏览
 // @author       lastsunday
+// @license      MIT
 // @match        https://we.51job.com/pc/search*
 // @match        https://www.zhipin.com/web/geek/job*
 // @match        https://sou.zhaopin.com/*
