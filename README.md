@@ -2,6 +2,11 @@
 
 协助找工作，方便职位浏览的油猴脚本
 
+## 源码地址
+
+https://github.com/lastsunday/job-hunting-tampermonkey
+
+
 ## 运行截图
 
 <img src="https://raw.githubusercontent.com/lastsunday/job-hunting-tampermonkey/main/docs/introduction/tampermonkey-51job.png" alt="chrome_extension_sidepanel_open" width="600px"/>
