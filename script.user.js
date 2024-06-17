@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         job-hunting
 // @namespace    http://tampermonkey.net/
-// @version      2024-06-17
+// @version      1.0.0
 // @description  协助找工作，方便职位的浏览
 // @author       lastsunday
 // @match        https://we.51job.com/pc/search*
