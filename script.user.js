@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         job-hunting
 // @namespace    https://github.com/lastsunday/job-hunting-tampermonkey/
-// @version      1.0.0
+// @version      1.1.0
 // @description  协助找工作，方便职位的浏览
 // @author       lastsunday
 // @license      MIT
@@ -9,8 +9,14 @@
 // @match        https://www.zhipin.com/web/geek/job*
 // @match        https://sou.zhaopin.com/*
 // @match        https://www.lagou.com/wn/*
+// @connect      kjxb.org
+// @grant        GM_xmlhttpRequest
+// @grant        unsafeWindow
+// @compatible   firefox Tampermonkey
+// @compatible   chrome Tampermonkey
+// @compatible   edge Tampermonkey
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=tampermonkey.net.cn
-// @grant        none
+// @require      https://unpkg.com/jquery
 // @require      https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js
 // ==/UserScript==
 
@@ -1078,7 +1084,8 @@ function isOutsource(brandName) {
 }
 
 ;(function () {
-    if ( typeof window.CustomEvent === "function" ) return false;
+    console.log("[setup] CustomEvent")
+    if ( typeof window.unsafeWindow.CustomEvent === "function" ) return false;
 
     function CustomEvent ( event, params ) {
         params = params || { bubbles: false, cancelable: false, detail: undefined };
@@ -1086,24 +1093,25 @@ function isOutsource(brandName) {
         evt.initCustomEvent( event, params.bubbles, params.cancelable, params.detail );
         return evt;
     }
-    CustomEvent.prototype = window.Event.prototype;
-    window.CustomEvent = CustomEvent;
+    CustomEvent.prototype = window.unsafeWindow.Event.prototype;
+    window.unsafeWindow.CustomEvent = CustomEvent;
 
 })();
 (function() {
     'use strict';
-
+    console.log("[setup] appcss")
     let appStyleTag = document.createElement("style");
     appStyleTag.innerHTML=appCss;
     document.getElementsByTagName("head")[0].appendChild(appStyleTag);
 
+    console.log("[setup] ajax proxy")
     //拦截Ajax
     function ajaxEventTrigger(event) {
         let ajaxEvent = new CustomEvent(event, { detail: this });
-        window.dispatchEvent(ajaxEvent);
+        window.unsafeWindow.dispatchEvent(ajaxEvent);
     }
 
-    let oldXHR = window.XMLHttpRequest;
+    let oldXHR = window.unsafeWindow.XMLHttpRequest;
     if(!oldXHR) return console.error('不支持 XMLHttpRequest！ 请更换最新的 chrome 浏览器')
 
     function newXHR() {
@@ -1143,9 +1151,8 @@ function isOutsource(brandName) {
         return realXHR;
     }
     newXHR.prototype = oldXHR.prototype;
-    window.XMLHttpRequest = newXHR;
-
-    window.addEventListener("ajaxGetData", function (e) {
+    window.unsafeWindow.XMLHttpRequest = newXHR;
+    window.unsafeWindow.addEventListener("ajaxGetData", function (e) {
         const data = e?.detail;
         if (!data) return;
         const responseURL = data?.responseURL;
@@ -1174,7 +1181,7 @@ function isOutsource(brandName) {
         }
     });
 
-    window.addEventListener("proxyScriptLoaded", async function (e) {
+    window.unsafeWindow.addEventListener("proxyScriptLoaded", async function (e) {
         if (location.host === "sou.zhaopin.com") {
             // 智联招聘首次打开
             const data = e?.detail?.zhipin?.initialState;
@@ -1189,7 +1196,7 @@ function isOutsource(brandName) {
 
     });
     // 监听页面的ajax
-    window.addEventListener("ajaxReadyStateChange",function(e){
+    window.unsafeWindow.addEventListener("ajaxReadyStateChange",function(e){
         let xhr = e.detail;
         const data = {
             response: xhr?.response,
@@ -1203,10 +1210,11 @@ function isOutsource(brandName) {
         if(xhr?.readyState == 4 && xhr?.status == 200){
             // 直接给 xhr，app.js 收不到。
             let event = new CustomEvent('ajaxGetData', { detail: data });
-            window.dispatchEvent(event);
+            window.unsafeWindow.dispatchEvent(event);
         }
     })
 
+    console.log("[setup] util")
     //util
     // 转换时间
     function convertTimeToHumanReadable(dateTime) {
@@ -1326,7 +1334,23 @@ function isOutsource(brandName) {
         return !str || /^\s*$/.test(str);
     }
 
+    function makeGetRequest(url, method = 'GET', data = null) {
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                url: url,
+                method: method,
+                data: data,
+                onload: function (response) {
+                    resolve(response);
+                },
+                onerror: function (error) {
+                    reject(error);
+                },
+            });
+        });
+    }
 
+    console.log("[setup] common")
     //common
     const JOB_STATUS_DESC_NEWEST = { key: "最新", label: "最新", order: 0 };
     const JOB_STATUS_DESC_RECRUITING = {
@@ -1342,6 +1366,7 @@ function isOutsource(brandName) {
     const PLATFORM_LAGOU = "LAGOU";
     const PLATFORM_JOBSDB = "JOBSDB";
 
+    console.log("[setup] common render")
     //common render
     function renderTimeTag(
     divElement,
@@ -1592,6 +1617,7 @@ function isOutsource(brandName) {
             functionPanelDiv.classList.add(`__${platform}_function_panel`);
             targetDom.append(functionPanelDiv);
             functionPanelDiv.appendChild(createSearchCompanyLink(item.jobCompanyName));
+            functionPanelDiv.appendChild(createCompanyReputation(item.jobCompanyName));
         });
     }
 
@@ -1603,36 +1629,112 @@ function isOutsource(brandName) {
         labelDiv.innerHTML = "公司信息查询：";
         dom.appendChild(labelDiv);
         dom.appendChild(
-            createATag(
+            createATagWithSearch(
                 `https://www.xiaohongshu.com/search_result?keyword=${decode}`,
                 "小红书"
             )
         );
         dom.appendChild(
-            createATag(
+            createATagWithSearch(
                 `https://maimai.cn/web/search_center?type=feed&query=${decode}&highlight=true`,
                 "脉脉"
             )
         );
         dom.appendChild(
-            createATag(`https://www.bing.com/search?q=${decode}`, "必应")
+            createATagWithSearch(`https://www.bing.com/search?q=${decode}`, "必应")
         );
         dom.appendChild(
-            createATag(`https://www.google.com/search?q=${decode}`, "Google")
+            createATagWithSearch(`https://www.google.com/search?q=${decode}`, "Google")
         );
         dom.appendChild(
-            createATag(`https://aiqicha.baidu.com/s?q=${decode}`, "爱企查")
+            createATagWithSearch(`https://aiqicha.baidu.com/s?q=${decode}`, "爱企查")
         );
         return dom;
     }
 
-    function createATag(url, label) {
+    function createCompanyReputation(keyword) {
+        const dom = document.createElement("div");
+        dom.className = "__company_info_search";
+        let labelDiv = document.createElement("div");
+        labelDiv.innerHTML = "公司风评检测：";
+        dom.appendChild(labelDiv);
+        const ruobilinDiv = document.createElement("div");
+        dom.appendChild(ruobilinDiv);
+        asyncRenderRuobilin(ruobilinDiv, keyword);
+        return dom;
+    }
+
+    async function asyncRenderRuobilin(div, keyword) {
+        div.title = "信息来源:跨境小白网（若比邻网）https://kjxb.org/"
+        const decode = encodeURIComponent(keyword);
+        const url = `https://kjxb.org/?s=${decode}&post_type=question`;
+        const loaddingTag = createATag("📡", url, "若比邻黑名单(检测中⌛︎)",(event) => {
+            clearAllChildNode(div);
+            asyncRenderRuobilin(div, keyword);
+        });
+        div.appendChild(loaddingTag);
+        renderRuobilinColor(loaddingTag, "black");
+        try {
+            const result = await makeGetRequest(url);
+            let hyperlinks = $(result.responseText).find(".ap-questions-hyperlink");
+            clearAllChildNode(div);
+            if (hyperlinks && hyperlinks.length > 0) {
+                //存在于若比邻黑名单
+                const count = hyperlinks.length;
+                let tag = createATag("📡", url, `若比邻黑名单(疑似${count}条记录)`);
+                div.appendChild(tag);
+                renderRuobilinColor(tag, "red");
+            } else {
+                //不存在
+                let tag = createATag("📡", url, "若比邻黑名单(无记录)");
+                div.appendChild(tag);
+                renderRuobilinColor(tag, "yellowgreen");
+            }
+        } catch (e) {
+            console.error(e);
+            clearAllChildNode(div);
+            const errorDiv = createATag(
+                "📡",
+                url,
+                "若比邻黑名单(检测失败，点击重新检测)",
+                (event) => {
+                    clearAllChildNode(div);
+                    asyncRenderRuobilin(div, keyword);
+                }
+            );
+            errorDiv.href = "javaScript:void(0);";
+            errorDiv.target = "";
+            div.appendChild(errorDiv);
+            renderRuobilinColor(errorDiv, "black");
+        }
+    }
+
+    function clearAllChildNode(div){
+        div.innerHTML = "";
+    }
+
+    function renderRuobilinColor(div, color) {
+        div.style = `background-color:${color};color:white`;
+    }
+
+    function clearRuobilinColor(div) {
+        div.style = null;
+    }
+
+    function createATagWithSearch(url, label) {
+        return createATag("🔎", url, label);
+    }
+
+    function createATag(emoji, url, label, callback) {
         let aTag = document.createElement("a");
         aTag.href = url;
         aTag.target = "_blank";
         aTag.ref = "noopener noreferrer";
-        aTag.text = "🔎" + label;
+        aTag.text = emoji + label;
         aTag.addEventListener("click", (event) => {
+            if (callback) {
+                callback(event);
+            }
             event.stopPropagation();
         });
         return aTag;
@@ -1683,6 +1785,7 @@ function isOutsource(brandName) {
         }
         return offsetTime;
     }
+    console.log("[setup] data handle")
     //data handle
 
     class Job{
@@ -2062,6 +2165,7 @@ function isOutsource(brandName) {
         return jobs;
     }
 
+    console.log("[setup] handler")
     //handler
     const handler = {
         job51:{
@@ -2591,13 +2695,14 @@ function isOutsource(brandName) {
 ;(function() {
     // 由于注入脚本的时候 DOMContentLoaded 已经触发，监听不到
     // proxy 脚本已加载，发送事件
+    console.log("[setup] CustomEvent proxyScriptLoaded")
     let event = new CustomEvent('proxyScriptLoaded', { detail: {
         zhipin: {
-            initialState: window.__INITIAL_STATE__
+            initialState: window.unsafeWindow.__INITIAL_STATE__
         },
         lagou: {
-            initialState: window.__NEXT_DATA__
+            initialState: window.unsafeWindow.__NEXT_DATA__
         }
     } });
-    window.dispatchEvent(event);
+    window.unsafeWindow.dispatchEvent(event);
 })();
