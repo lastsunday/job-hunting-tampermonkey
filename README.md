@@ -25,6 +25,7 @@ https://github.com/lastsunday/job-hunting-tampermonkey
 1. 显示职位发布时间与自动排序(按职位发布时间,hr活跃时间（只支持BOSS）)。
 2. 快捷查询公司信息🔎（互联网渠道，政府渠道）。
 3. 自动检测公司风评📡，当前支持：若比邻黑名单。
+4. 自动快速查询公司信息（BOSS直聘需手动点击查询）。
 
 ## Thanks
 
