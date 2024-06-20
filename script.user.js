@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         job-hunting
 // @namespace    https://github.com/lastsunday/job-hunting-tampermonkey/
-// @version      1.3.0
+// @version      1.3.1
 // @description  协助找工作，方便职位的浏览
 // @author       lastsunday
 // @license      MIT
@@ -1834,6 +1834,11 @@ function isOutsource(brandName) {
         .append(
           $(
             `<div><div class="__company_info_quick_search_item_label">公司名：</div><div class="__company_info_quick_search_item_value">${companyInfoDetail.entName}</div></div>`
+          )
+        )
+        .append(
+          $(
+            `<div><div class="__company_info_quick_search_item_label">成立时间：</div>${companyInfoDetail.startDate}</div>`
           )
         )
         .append(
