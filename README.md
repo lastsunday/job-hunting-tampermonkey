@@ -19,6 +19,7 @@ https://github.com/lastsunday/job-hunting-tampermonkey
 | 前程无忧  | https://we.51job.com/pc/search      |                        |
 | 智联招聘  | https://sou.zhaopin.com/            |                        |
 | 拉钩网    | https://www.lagou.com/wn/zhaopin    |                        |
+| 猎聘网 | https://www.liepin.com/zhaopin              | 需点击搜索按钮才有效果 |
 
 ## 功能列表
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         job-hunting
 // @namespace    https://github.com/lastsunday/job-hunting-tampermonkey/
-// @version      1.3.1
+// @version      1.4.0
 // @description  协助找工作，方便职位的浏览
 // @author       lastsunday
 // @license      MIT
@@ -9,6 +9,7 @@
 // @match        https://www.zhipin.com/web/geek/job*
 // @match        https://sou.zhaopin.com/*
 // @match        https://www.lagou.com/wn/*
+// @match        https://www.liepin.com/*
 // @connect      kjxb.org
 // @connect      aiqicha.baidu.com
 // @grant        GM_xmlhttpRequest
@@ -25,7 +26,8 @@
 const appCss = `
 .__boss_time_tag,
 .__zhipin_time_tag,
-.__zhilian_time_tag {
+.__zhilian_time_tag,
+.__liepin_time_tag {
   position: absolute;
   right: 0;
   top: 0;
@@ -156,7 +158,7 @@ div[data-search-sol-meta] {
   flex: 1;
 }
 
-.__company_info_quick_search_button{
+.__company_info_quick_search_button {
   background-color: mediumblue;
   color: white;
   padding: 1px 8px;
@@ -167,7 +169,7 @@ div[data-search-sol-meta] {
   margin: 5px;
 }
 
-.__company_info_other_channel{
+.__company_info_other_channel {
   justify-content: end;
 }
 
@@ -193,6 +195,9 @@ div[data-search-sol-meta] {
   display: flex;
   flex-direction: column;
   position: relative;
+}
+
+.__LIEPIN_function_panel {
 }
 
 .__comment_wrapper {
@@ -222,6 +227,10 @@ div[data-search-sol-meta] {
   padding-right: 25px;
 }
 
+.__LIEPIN_comment_wrapper {
+  padding-right: 25px;
+}
+
 .__logo_in_function_panel {
   position: absolute;
   right: 0;
@@ -232,6 +241,13 @@ div[data-search-sol-meta] {
 .__first_browse_time {
   font-size: 14px;
   color: #414a60;
+}
+
+.__LIEPIN_job_item {
+  position: relative;
+  background-color: white;
+  padding: 10px;
+  margin: 10px;
 }
 `;
 
@@ -1275,7 +1291,6 @@ function isOutsource(brandName) {
     if (responseURL.indexOf("/api/job/search-pc") !== -1) {
       handler.job51.handle(data?.response);
     }
-
     // 拉勾网接口
     if (responseURL.indexOf("/jobs/v2/positionAjax.json") !== -1) {
       /**
@@ -1284,6 +1299,12 @@ function isOutsource(brandName) {
        * 由于拉勾的重写在 proxyAjax 之前运行，所以这里拿到的是解密后的数据
        */
       handler.lagou.build().handle(data?.response);
+    }
+    // liepin
+    if (
+      responseURL.indexOf("/api/com.liepin.searchfront4c.pc-search-job") !== -1
+    ) {
+      handler.liepin.handle(data?.response);
     }
   });
 
@@ -1422,6 +1443,9 @@ function isOutsource(brandName) {
   }
 
   function convertEmptyStringToNull(value) {
+    if (isNumeric(value)) {
+      return value;
+    }
     if (value) {
       if (isEmpty(value) || isBlank(value)) {
         return null;
@@ -1431,6 +1455,10 @@ function isOutsource(brandName) {
     } else {
       return null;
     }
+  }
+
+  function isNumeric(value) {
+    return !isNaN(parseFloat(value)) && isFinite(value);
   }
 
   const isEmpty = (str) => !str?.length;
@@ -1481,14 +1509,11 @@ function isOutsource(brandName) {
   const PLATFORM_ZHILIAN = "ZHILIAN";
   const PLATFORM_LAGOU = "LAGOU";
   const PLATFORM_JOBSDB = "JOBSDB";
+  const PLATFORM_LIEPIN = "LIEPIN";
 
   console.log("[setup] common render");
   //common render
-  function renderTimeTag(
-    divElement,
-    jobDTO,
-    { jobStatusDesc, hrActiveTimeDesc, platform } = {}
-  ) {
+  function renderTimeTag(divElement, jobDTO, { jobStatusDesc, platform } = {}) {
     if (jobDTO == null || jobDTO == undefined) {
       throw new Error("jobDTO is required");
     }
@@ -1512,12 +1537,15 @@ function isOutsource(brandName) {
         statusTag.classList.add("__time_tag_base_text_font");
         divElement.appendChild(statusTag);
       }
-      //hrActiveTimeDesc for boss
-      if (hrActiveTimeDesc) {
-        let hrActiveTimeDescTag = document.createElement("span");
-        hrActiveTimeDescTag.innerHTML = "【HR-" + hrActiveTimeDesc + "】";
-        hrActiveTimeDescTag.classList.add("__time_tag_base_text_font");
-        divElement.appendChild(hrActiveTimeDescTag);
+    } else if (platform && platform == PLATFORM_LIEPIN) {
+      //refreshTime
+      let refreshTime = jobDTO.jobFirstPublishDatetime;
+      if (refreshTime) {
+        let refreshTimeTag = document.createElement("span");
+        let refreshTimeHumanReadable = convertTimeToHumanReadable(refreshTime);
+        refreshTimeTag.innerHTML += "【" + refreshTimeHumanReadable + "更新】";
+        refreshTimeTag.classList.add("__time_tag_base_text_font");
+        divElement.appendChild(refreshTimeTag);
       }
     } else {
       //firstPublishTime
@@ -1533,6 +1561,14 @@ function isOutsource(brandName) {
         divElement.appendChild(firstPublishTimeTag);
       }
     }
+    if (jobDTO.hrActiveTimeDesc) {
+      let hrActiveTimeDescTag = document.createElement("span");
+      hrActiveTimeDescTag.innerHTML = "【HR-" + jobDTO.hrActiveTimeDesc + "】";
+      hrActiveTimeDescTag.classList.add("__time_tag_base_text_font");
+      divElement.appendChild(hrActiveTimeDescTag);
+    }
+    //显示职位介绍
+    divElement.title = jobDTO.jobDescription;
     //companyInfo
     let companyInfoTag = null;
     let companyInfoText = getCompanyInfoText(jobDTO.jobCompanyName);
@@ -1546,12 +1582,11 @@ function isOutsource(brandName) {
     divElement.classList.add("__time_tag_base_text_font");
 
     //为time tag染色
-    if (hrActiveTimeDesc) {
-      // for boss
+    if (jobDTO.hrActiveTimeDesc && platform == PLATFORM_BOSS) {
       //根据hr活跃时间为JobItem染色
       let now = dayjs();
       let hrActiveDatetime = now.subtract(
-        convertHrActiveTimeDescToOffsetTime(hrActiveTimeDesc),
+        convertHrActiveTimeDescToOffsetTime(jobDTO.hrActiveTimeDesc),
         "millisecond"
       );
       divElement.style = getRenderTimeStyle(hrActiveDatetime);
@@ -1668,8 +1703,8 @@ function isOutsource(brandName) {
         dayjs(o1.firstBrowseDatetime ?? null).valueOf()
       );
     });
-    if (platform == PLATFORM_BOSS) {
-      //handle hr active time
+    //handle hr active time
+    if (platform == PLATFORM_BOSS || platform == PLATFORM_LIEPIN) {
       sortList.forEach((item) => {
         let hrActiveTimeOffsetTime = convertHrActiveTimeDescToOffsetTime(
           item.hrActiveTimeDesc
@@ -1679,6 +1714,8 @@ function isOutsource(brandName) {
       sortList.sort((o1, o2) => {
         return o1.hrActiveTimeOffsetTime - o2.hrActiveTimeOffsetTime;
       });
+    }
+    if (platform == PLATFORM_BOSS) {
       sortList.sort((o1, o2) => {
         if (o2.jobStatusDesc && o1.jobStatusDesc) {
           return o1.jobStatusDesc.order - o2.jobStatusDesc.order;
@@ -1921,11 +1958,24 @@ function isOutsource(brandName) {
     let resultList = data.result.resultList;
     for (let i = 0; i < resultList.length; i++) {
       let companyInfo = resultList[i];
-      if (companyInfo.titleName == keyword) {
+      if (isCompanyNameSame(companyInfo.titleName, keyword)) {
         return companyInfo;
       }
     }
     return null;
+  }
+
+  /**
+   * 公司名对比，将中文括号进行替换英文括号，然后进行对比
+   * @param {*} name1
+   * @param {*} name2
+   * @returns
+   */
+  function isCompanyNameSame(name1, name2) {
+    return (
+      name1.replaceAll("（", "(").replaceAll("）", ")") ==
+      name2.replaceAll("（", "(").replaceAll("）", ")")
+    );
   }
 
   async function getCompanyInfoDetailByAiqicha(pid) {
@@ -2101,14 +2151,23 @@ function isOutsource(brandName) {
     const oneYear = 86400000 * 30 * 6 * 2;
     if (hrActiveTimeDesc) {
       let coefficient;
-      if (hrActiveTimeDesc.includes("刚刚")) {
+      if (
+        hrActiveTimeDesc.includes("刚刚") ||
+        hrActiveTimeDesc.includes("当前")
+      ) {
         offsetTime = 0;
       } else if (
+        hrActiveTimeDesc.includes("分") ||
+        hrActiveTimeDesc.includes("时") ||
         hrActiveTimeDesc.includes("日") ||
         hrActiveTimeDesc.includes("周") ||
         hrActiveTimeDesc.includes("月")
       ) {
-        if (hrActiveTimeDesc.includes("日")) {
+        if (hrActiveTimeDesc.includes("分")) {
+          coefficient = 60000;
+        } else if (hrActiveTimeDesc.includes("时")) {
+          coefficient = 3600000;
+        } else if (hrActiveTimeDesc.includes("日")) {
           coefficient = 86400000;
         } else if (hrActiveTimeDesc.includes("周")) {
           coefficient = 86400000 * 7;
@@ -2179,6 +2238,8 @@ function isOutsource(brandName) {
       jobs = handleLagouData(list);
     } else if (PLATFORM_JOBSDB == platform) {
       jobs = handleJobsdb(list);
+    } else if (PLATFORM_LIEPIN == platform) {
+      jobs = handleLiepin(list);
     } else {
       //skip
     }
@@ -2204,12 +2265,106 @@ function isOutsource(brandName) {
         jobId = item.positionId;
       } else if (PLATFORM_JOBSDB == platform) {
         jobId = item.id;
+      } else if (PLATFORM_LIEPIN == platform) {
+        jobId = item.job.jobId;
       } else {
         //skip
       }
       result.push(genId(jobId, platform));
     }
     return result;
+  }
+
+  function handleLiepin(list) {
+    let jobs = [];
+    for (let i = 0; i < list.length; i++) {
+      let job = new Job();
+      let item = list[i];
+      const {
+        jobId,
+        link,
+        title,
+        dq,
+        requireEduLevel,
+        requireWorkYears,
+        salary,
+        refreshTime,
+        jobDesc, //访问详情页面而来的
+      } = item.job;
+      const { compName } = item.comp;
+      const { recruiterName, recruiterTitle } = item.recruiter;
+      job.jobId = genId(jobId, PLATFORM_LIEPIN);
+      job.jobPlatform = PLATFORM_LIEPIN;
+      job.jobUrl = link;
+      job.jobName = title;
+      job.jobCompanyName = compName;
+      job.jobLocationName = dq;
+      job.jobAddress = dq;
+      job.jobLongitude = "";
+      job.jobLatitude = "";
+      job.jobDescription = jobDesc;
+      job.jobDegreeName = requireEduLevel;
+      //handle job year
+      let jobYearGroups = requireWorkYears?.match(JOB_YEAR_MATCH)?.groups;
+      if (jobYearGroups) {
+        job.jobYear = jobYearGroups.min;
+      } else {
+        //skip
+      }
+      //handle salary
+      //TODO salary content was complex,not handle all situation
+      if (salary) {
+        let targetSalary = salary.replaceAll(",", "").replaceAll("$", "");
+        let groups = targetSalary.match(SALARY_MATCH)?.groups;
+        if (groups) {
+          let coefficient;
+          let minUnitCoefficient;
+          let maxUnitCoefficient;
+          if (salary.includes("per hour")) {
+            //一天8小时工作5天
+            coefficient = 1 * 8 * 5;
+          } else {
+            coefficient = 1;
+          }
+          if (groups?.minUnit.includes("k")) {
+            minUnitCoefficient = 1000;
+          } else {
+            if (
+              groups?.minUnit.includes("-") &&
+              groups?.maxUnit.includes("k")
+            ) {
+              minUnitCoefficient = 1000;
+            } else {
+              minUnitCoefficient = 1;
+            }
+          }
+          if (groups?.maxUnit.includes("k")) {
+            maxUnitCoefficient = 1000;
+          } else {
+            maxUnitCoefficient = 1;
+          }
+          job.jobSalaryMin =
+            Number.parseInt(groups?.min) * coefficient * minUnitCoefficient;
+          job.jobSalaryMax =
+            Number.parseInt(groups?.max) * coefficient * maxUnitCoefficient;
+        } else {
+          //skip
+        }
+      }
+      if (salary.endsWith("薪")) {
+        let groups = salary.match(SALARY_MATCH)?.groups;
+        job.jobSalaryTotalMonth = groups.month;
+      } else {
+        job.jobSalaryTotalMonth = "";
+      }
+      //暂未找到首次发布时间，用更新时间代替
+      job.jobFirstPublishDatetime = refreshTime;
+      job.bossName = recruiterName;
+      job.bossCompanyName = compName;
+      job.bossPosition = recruiterTitle;
+      jobs.push(job);
+    }
+    return jobs;
   }
 
   function handleJobsdb(list) {
@@ -2506,7 +2661,7 @@ function isOutsource(brandName) {
         let groups = provideSalaryString.match(SALARY_MATCH)?.groups;
         job.jobSalaryTotalMonth = groups.month;
       } else {
-        job.jobSalaryTotalMont = "";
+        job.jobSalaryTotalMonth = "";
       }
       job.jobFirstPublishDatetime = confirmDateString;
       job.bossName = hrName;
@@ -2700,7 +2855,6 @@ function isOutsource(brandName) {
               jobDTOList = await getJobs(jsonList, PLATFORM_BOSS);
               const lastModifyTimeList = [];
               const jobStatusDescList = [];
-              const hrActiveTimeDescList = [];
               jsonList.forEach((item, index) => {
                 lastModifyTimeList.push(
                   dayjs(item.value?.zpData?.brandComInfo?.activeTime)
@@ -2716,7 +2870,6 @@ function isOutsource(brandName) {
                 ].jobCompanyApiUrl = `https://www.zhipin.com/gongsi/${item.value?.zpData?.brandComInfo?.encryptBrandId}.html`;
                 let hrActiveTimeDesc =
                   item.value?.zpData?.bossInfo?.activeTimeDesc;
-                hrActiveTimeDescList.push(hrActiveTimeDesc);
                 //额外针对BOSS平台，为后面的排序做准备
                 jobDTOList[index].hrActiveTimeDesc = hrActiveTimeDesc;
               });
@@ -2725,7 +2878,6 @@ function isOutsource(brandName) {
                 const dom = getListItem(index);
                 let tag = createDOM(
                   jobDTOList[index],
-                  hrActiveTimeDescList[index],
                   jobStatusDescList[index]
                 );
                 dom.appendChild(tag);
@@ -2755,11 +2907,10 @@ function isOutsource(brandName) {
             });
         }
 
-        function createDOM(jobDTO, hrActiveTimeDesc, jobStatusDesc) {
+        function createDOM(jobDTO, jobStatusDesc) {
           const div = document.createElement("div");
           div.classList.add("__boss_time_tag");
           renderTimeTag(div, jobDTO, {
-            hrActiveTimeDesc: hrActiveTimeDesc,
             jobStatusDesc: jobStatusDesc,
             platform: PLATFORM_BOSS,
           });
@@ -3084,6 +3235,171 @@ function isOutsource(brandName) {
             });
           },
         };
+      },
+    },
+    liepin: {
+      handle: function (responseText) {
+        try {
+          const data = JSON.parse(responseText);
+          mutationContainer().then((node) => {
+            setupSortJobItem(node);
+            parseData(data?.data?.data?.jobCardList || [], getListByNode(node));
+          });
+        } catch (err) {
+          console.error("解析 JSON 失败", err);
+        }
+
+        // 获取职位列表节点
+        function getListByNode(node) {
+          const children = node?.children;
+          return function getListItem(index) {
+            return children?.[index];
+          };
+        }
+
+        // 监听节点，判断职位列表是否被挂载
+        function mutationContainer() {
+          return new Promise((resolve, reject) => {
+            const dom = document.querySelector(".content-left-section");
+            let targetDeom = null;
+            const observer = new MutationObserver(function (childList, obs) {
+              const isAdd = (childList || []).some((item) => {
+                let nodes = item?.addedNodes;
+                if (nodes) {
+                  for (let i = 0; i < nodes.length; i++) {
+                    let nodeItem = nodes[i];
+                    if (nodeItem.className == "job-list-box") {
+                      targetDeom = nodeItem;
+                      return nodeItem;
+                    }
+                  }
+                  return false;
+                } else {
+                  return false;
+                }
+              });
+              return isAdd ? resolve(targetDeom) : reject("未找到职位列表");
+            });
+
+            observer.observe(dom, {
+              childList: true,
+              subtree: false,
+            });
+          });
+        }
+
+        // 解析数据，插入时间标签
+        async function parseData(list, getListItem) {
+          const urlList = [];
+          list.forEach((item, index) => {
+            const dom = getListItem(index);
+            const { link } = item.job;
+            //apiUrl
+            urlList.push(link);
+
+            dom.classList.add("__LIEPIN_job_item");
+            //某些职位不知什么原因不显示，现在把其显示出来
+            let jobCard = dom.querySelector(".job-card-pc-container");
+            if (jobCard.style.display == "none") {
+              jobCard.style.display = "flex";
+            }
+            const { compName } = item.comp;
+            let loadingLastModifyTimeTag = createLoadingDOM(
+              compName,
+              "__liepin_time_tag"
+            );
+            dom.appendChild(loadingLastModifyTimeTag);
+          });
+          const promiseList = urlList.map(async (url, index) => {
+            const DELAY_FETCH_TIME = 75; //ms
+            const DELAY_FETCH_TIME_RANDOM_OFFSET = 50; //ms
+            await randomDelay(
+              DELAY_FETCH_TIME * index,
+              DELAY_FETCH_TIME_RANDOM_OFFSET
+            ); // 避免频繁请求触发风控
+            const response = await fetch(url);
+            const result = await response.text();
+            return result;
+          });
+          Promise.allSettled(promiseList)
+            .then(async (jobDetailHtmlContentList) => {
+              const hrActiveTimeDescList = [];
+              jobDetailHtmlContentList.forEach((item, index) => {
+                let jobDesc = null;
+                let jobDescFilterTextList = item.value.match(
+                  /<dd data-selector="job-intro-content">[\s\S]*?<\/dd>/g
+                );
+                if (jobDescFilterTextList && jobDescFilterTextList.length > 0) {
+                  const jobDescGroups = jobDescFilterTextList[0].match(
+                    /<dd data-selector="job-intro-content">(?<data>[\s\S]*)<\/dd>/
+                  )?.groups;
+                  if (jobDescGroups) {
+                    jobDesc = jobDescGroups["data"];
+                  }
+                }
+                list[index].job.jobDesc = jobDesc;
+                let hrActiveTimeDesc = null;
+                let hrActiveTimeDescGroups = item.value.match(
+                  /<span class="online off">(?<data>.*)<\/span>/
+                )?.groups;
+                if (hrActiveTimeDescGroups) {
+                  hrActiveTimeDesc = hrActiveTimeDescGroups["data"];
+                }
+                hrActiveTimeDescList.push(hrActiveTimeDesc);
+              });
+              let jobDTOList = await getJobs(list, PLATFORM_LIEPIN);
+              list.forEach((item, index) => {
+                const { compId } = item.comp;
+                jobDTOList[
+                  index
+                ].jobCompanyApiUrl = `https://www.liepin.com/company/${compId}`;
+                jobDTOList[index].hrActiveTimeDesc =
+                  hrActiveTimeDescList[index];
+                const dom = getListItem(index);
+                let tag = createDOM(jobDTOList[index]);
+                dom.appendChild(tag);
+              });
+              hiddenLoadingDOM();
+              renderSortJobItem(jobDTOList, getListItem, {
+                platform: PLATFORM_LIEPIN,
+              });
+              renderFunctionPanel(jobDTOList, getListItem, {
+                platform: PLATFORM_LIEPIN,
+                getCompanyInfoFunction: async function (url) {
+                  const response = await fetch(url);
+                  const result = await response.text();
+                  //eg: ["企业全称</span></p><pclass=\"text\">长沙裕邦软件开发有限公司</p>"]
+                  let firstFilterTextList = result
+                    .replaceAll("\n", "")
+                    .replaceAll(" ", "")
+                    .match(/企业全称<\/span><\/p>.*?\/p>/g);
+                  if (firstFilterTextList && firstFilterTextList.length > 0) {
+                    const groups = firstFilterTextList[0].match(
+                      /">(?<data>.*)<\/p>/
+                    )?.groups;
+                    if (groups) {
+                      return groups["data"];
+                    } else {
+                      return null;
+                    }
+                  }
+                  return null;
+                },
+              });
+              finalRender(jobDTOList, { platform: PLATFORM_LIEPIN });
+            })
+            .catch((error) => {
+              console.log(error);
+              hiddenLoadingDOM();
+            });
+        }
+
+        function createDOM(jobDTO) {
+          const div = document.createElement("div");
+          div.classList.add("__liepin_time_tag");
+          renderTimeTag(div, jobDTO, { platform: PLATFORM_LIEPIN });
+          return div;
+        }
       },
     },
   };
