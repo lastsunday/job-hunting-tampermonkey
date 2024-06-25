@@ -1915,6 +1915,7 @@ function isOutsource(brandName) {
       }
     } catch (e) {
       console.error(e);
+      throw e;
     }
   }
 
