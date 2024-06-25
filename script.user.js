@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         job-hunting
 // @namespace    https://github.com/lastsunday/job-hunting-tampermonkey/
-// @version      1.4.0
+// @version      1.5.0
 // @description  协助找工作，方便职位的浏览
 // @author       lastsunday
 // @license      MIT
@@ -12,6 +12,9 @@
 // @match        https://www.liepin.com/*
 // @connect      kjxb.org
 // @connect      aiqicha.baidu.com
+// @connect      tool.chinaz.com
+// @connect      whois.chinaz.com
+// @connect      icp.aizhan.com
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
 // @compatible   firefox Tampermonkey
@@ -131,6 +134,7 @@ div[data-search-sol-meta] {
 .__company_info_quick_search_item {
   display: flex;
   padding: 2px;
+  align-items: baseline;
   a {
     padding-right: 10px;
     font-size: 14px;
@@ -145,7 +149,7 @@ div[data-search-sol-meta] {
 
 .__company_info_quick_search_item > div {
   display: flex;
-  align-items: flex-end;
+  align-items: inherit;
   padding-right: 10px;
 }
 
@@ -248,6 +252,24 @@ div[data-search-sol-meta] {
   background-color: white;
   padding: 10px;
   margin: 10px;
+}
+
+.__website_value_success {
+  background-color: yellowgreen;
+  color: white;
+  font-size: 12px;
+}
+
+.__website_value_error {
+  background-color: red;
+  color: white;
+  font-size: 12px;
+}
+
+.__website_value_loading {
+  background-color: black;
+  color: white;
+  font-size: 12px;
 }
 `;
 
@@ -1389,6 +1411,8 @@ function isOutsource(brandName) {
     let dayC = curDate.diff(date, "day", true);
     // 计算时间差共有多少个月
     let monthC = curDate.diff(date, "month", true);
+    // 计算时间差共有多少个年
+    let yearC = curDate.diff(date, "year", true);
 
     if (minC < 1) {
       return `刚刚`;
@@ -1398,8 +1422,10 @@ function isOutsource(brandName) {
       return `${parseInt(hourC)}小时前`;
     } else if (monthC < 1) {
       return `${parseInt(dayC)}天前`;
-    } else {
+    } else if (yearC < 1) {
       return `${parseInt(monthC)}月前`;
+    } else {
+      return `${parseInt(yearC)}年前`;
     }
   }
 
@@ -1494,6 +1520,21 @@ function isOutsource(brandName) {
     }
   }
 
+  function getDomain(url) {
+    if (url) {
+      return url
+        .replace("http://", "")
+        .replace("https://", "")
+        .replace("www.", "")
+        .replace("/", "");
+    }
+    return url;
+  }
+
+  function convertDateStringToDateObject(text) {
+    return dayjs(text).isValid() ? dayjs(text).toDate() : null;
+  }
+
   console.log("[setup] common");
   //common
   const JOB_STATUS_DESC_NEWEST = { key: "最新", label: "最新", order: 0 };
@@ -1510,6 +1551,10 @@ function isOutsource(brandName) {
   const PLATFORM_LAGOU = "LAGOU";
   const PLATFORM_JOBSDB = "JOBSDB";
   const PLATFORM_LIEPIN = "LIEPIN";
+  /**
+   * 爱企查
+   */
+  const PLATFORM_AIQICHA = "AIQICHA";
 
   console.log("[setup] common render");
   //common render
@@ -1853,43 +1898,59 @@ function isOutsource(brandName) {
   const AIQICHA_PAGE_DATA_MATCH = /window.pageData = (?<data>\{.*\})/;
 
   async function asyncRenderCompanyInfo(div, keyword) {
-    let companyInfo = await getCompanyInfoByAiqicha(keyword);
-    if (companyInfo) {
-      let companyInfoDetail = await getCompanyInfoDetailByAiqicha(
-        companyInfo.pid
-      );
-      div.appendChild(createCompanyInfoDetail(companyInfo, companyInfoDetail));
-    } else {
-      throw "company search fail";
+    try {
+      let companyInfo = await getCompanyInfoByAiqicha(keyword);
+      if (companyInfo) {
+        let companyInfoDetail = await getCompanyInfoDetailByAiqicha(
+          companyInfo.pid
+        );
+        let companyDetail = companyInfoDetail;
+        companyDetail.selfRiskTotal = companyInfo?.risk?.selfRiskTotal;
+        companyDetail.unionRiskTotal = companyInfo?.risk?.unionRiskTotal;
+        companyDetail.sourceUrl = `https://aiqicha.baidu.com/company_detail_${companyDetail.pid}`;
+        let company = handleAiqichaData(companyDetail);
+        div.appendChild(createCompanyInfoDetail(company));
+      } else {
+        throw "company search fail";
+      }
+    } catch (e) {
+      console.error(e);
+      throw e;
     }
   }
 
-  function createCompanyInfoDetail(companyInfo, companyInfoDetail) {
+  function createCompanyInfoDetail(company) {
     let contentDiv = $("<div></div>");
     contentDiv.append(
       $(`<div class="__company_info_quick_search_item"></div>`)
         .append(
           $(
-            `<div><div class="__company_info_quick_search_item_label">公司名：</div><div class="__company_info_quick_search_item_value">${companyInfoDetail.entName}</div></div>`
+            `<div><div class="__company_info_quick_search_item_label">公司名：</div><div class="__company_info_quick_search_item_value">${company.companyName}</div></div>`
           )
         )
         .append(
           $(
-            `<div><div class="__company_info_quick_search_item_label">成立时间：</div>${companyInfoDetail.startDate}</div>`
+            `<div><div class="__company_info_quick_search_item_label">成立时间：</div><div>
+            ${dayjs(company.companyStartDate).format(
+              "YYYY-MM-DD"
+            )}(${convertTimeOffsetToHumanReadable(
+              dayjs(company.companyStartDate)
+            )})
+            </div></div>`
           )
         )
         .append(
           $(
-            `<div><div class="__company_info_quick_search_item_label">经营状态：</div>${companyInfoDetail.openStatus}</div>`
+            `<div><div class="__company_info_quick_search_item_label">经营状态：</div>${company.companyStatus}</div>`
           )
         )
     );
     let websiteElement = null;
-    if (companyInfoDetail.website && companyInfoDetail.website.length > 1) {
+    if (company.companyWebSite && company.companyWebSite.length > 1) {
       websiteElement = `<a href="${autoFillHttp(
-        companyInfoDetail.website
+        company.companyWebSite
       )}" target = "_blank"; ref = "noopener noreferrer">${
-        companyInfoDetail.website
+        company.companyWebSite
       }</a>`;
     } else {
       websiteElement = "-";
@@ -1898,55 +1959,214 @@ function isOutsource(brandName) {
       $(`<div class="__company_info_quick_search_item"></div>`)
         .append(
           $(
-            `<div><div class="__company_info_quick_search_item_label">法人：</div>${companyInfoDetail.legalPerson}</div>`
+            `<div><div class="__company_info_quick_search_item_label">法人：</div>${company.companyLegalPerson}</div>`
           )
         )
         .append(
           $(
-            `<div><div class="__company_info_quick_search_item_label">统一社会信用代码：</div>${companyInfoDetail.unifiedCode}</div>`
+            `<div><div class="__company_info_quick_search_item_label">统一社会信用代码：</div>${company.companyUnifiedCode}</div>`
           )
         )
-        .append(
-          $(
-            `<div><div class="__company_info_quick_search_item_label">官网：</div>${websiteElement}</div>`
-          )
-        )
+    );
+    let websiteStatusElement = $(`<div></div>`);
+    renderWebsiteStatus(websiteStatusElement[0], company.companyWebSite);
+    let websiteWhoisElement = $(`<div></div>`);
+    renderWebsiteWhois(websiteWhoisElement[0], company.companyWebSite);
+    let websiteIpcElement = $(`<div></div>`);
+    renderWebsiteIpc(websiteIpcElement[0], company.companyWebSite);
+    contentDiv.append(
+      $(`<div class="__company_info_quick_search_item"></div>`).append(
+        $(
+          `<div><div class="__company_info_quick_search_item_label">官网：</div>${websiteElement}</div>`
+        ),
+        $(
+          `<div><div class="__company_info_quick_search_item_label">状态：</div></div>`
+        ).append(websiteStatusElement),
+        $(
+          `<div><div class="__company_info_quick_search_item_label">建站时间：</div></div>`
+        ).append(websiteWhoisElement),
+        $(`<div></div>`).append(websiteIpcElement)
+      )
     );
     contentDiv.append(
       $(`<div class="__company_info_quick_search_item"></div>`)
         .append(
           $(
             `<div><div class="__company_info_quick_search_item_label">社保人数：</div>${
-              companyInfoDetail?.insuranceInfo?.insuranceNum ?? "-"
+              company.companyInsuranceNum ?? "-"
             }</div>`
           )
         )
         .append(
           $(
-            `<div><div class="__company_info_quick_search_item_label">自身风险数：</div>${companyInfo?.risk?.selfRiskTotal}</div>`
+            `<div><div class="__company_info_quick_search_item_label">自身风险数：</div>${company.companySelfRisk}</div>`
           )
         )
         .append(
           $(
-            `<div><div class="__company_info_quick_search_item_label">关联风险数：</div>${companyInfo?.risk?.unionRiskTotal}</div>`
+            `<div><div class="__company_info_quick_search_item_label">关联风险数：</div>${company.companyUnionRisk}</div>`
           )
         )
     );
     contentDiv.append(
       $(`<div class="__company_info_quick_search_item"></div>`).append(
         $(
-          `<div><div class="__company_info_quick_search_item_label">地址：</div><div class="__company_info_quick_search_item_value">${companyInfoDetail.regAddr}</div></div>`
+          `<div><div class="__company_info_quick_search_item_label">地址：</div><div class="__company_info_quick_search_item_value">${company.companyAddress}</div></div>`
         )
       )
     );
     contentDiv.append(
       $(`<div class="__company_info_quick_search_item"></div>`).append(
         $(
-          `<div><div class="__company_info_quick_search_item_label">数据来源：</div><div class="__company_info_quick_search_item_value"><a href="https://aiqicha.baidu.com/company_detail_${companyInfo.pid}" target = "_blank"; ref = "noopener noreferrer">https://aiqicha.baidu.com/company_detail_${companyInfo.pid}</a></div></div>`
+          `<div><div class="__company_info_quick_search_item_label">数据来源：</div><div class="__company_info_quick_search_item_value"><a href="${company.sourceUrl}" target = "_blank"; ref = "noopener noreferrer">${company.sourceUrl}</a></div></div>`
         )
       )
     );
     return contentDiv[0];
+  }
+
+  async function renderWebsiteIpc(element, website) {
+    try {
+      element.onclick = null;
+      element.textContent = "备案信息检测中⌛︎";
+      element.className = "__website_value_loading";
+      if (website.length <= 1) {
+        //找不到网址，会显示-符号
+        element.textContent = "";
+        element.className = "";
+      } else {
+        let url = `https://icp.aizhan.com/${encodeURIComponent(
+          getDomain(website)
+        )}/`;
+        const response = await makeGetRequest(url);
+        const result = response.responseText;
+        let firstMatchArray = result.match(
+          /<table class="table">[\s\S]*<tr><td class="thead">主办单位名称<\/td><td>.*[<\td>]?/
+        );
+        if (firstMatchArray && firstMatchArray.length > 0) {
+          let groups = firstMatchArray[0]
+            ?.replaceAll("\n", "")
+            ?.replaceAll("\t", "")
+            ?.replaceAll(" ", "")
+            ?.replaceAll("&nbsp;", "")
+            ?.match(
+              /<tr>(?<name>.*?)<\/tr><tr>(?<type>.*?)<\/tr><tr>(?<ipc>.*?)<\/tr>/
+            )?.groups;
+          if (groups) {
+            let name = groups.name.match(/<td>(?<name>.*)<a/).groups.name;
+            let type = groups.type.match(/<td>(?<type>.*)<\/td>/).groups.type;
+            let ipc = groups.ipc.match(/<span>(?<ipc>.*)<\/span>/).groups.ipc;
+            element.textContent = "";
+            element.className = "";
+            element.className = "__company_info_quick_search_item";
+            element.title = name;
+            let rootElement = $(element);
+            rootElement.append(
+              $(
+                `<div><div class="__company_info_quick_search_item_label">网站备案：</div><div class="__company_info_quick_search_item_value">${ipc}</div></div>`
+              ),
+              $(
+                `<div><div class="__company_info_quick_search_item_label">单位性质：</div><div class="__company_info_quick_search_item_value">${type}</div></div>`
+              )
+            );
+            return;
+          }
+        }
+        clearAllChildNode(element);
+        element.className = "";
+        let syncDataButton = document.createElement("div");
+        syncDataButton.className = "__company_info_quick_search_button";
+        syncDataButton.textContent = "🔎未找到备案信息，点击到工信部核实";
+        syncDataButton.onclick = () => {
+          window.open("https://beian.miit.gov.cn/#/Integrated/recordQuery");
+        };
+        element.appendChild(syncDataButton);
+      }
+    } catch (e) {
+      console.error(e);
+      element.onclick = (event) => {
+        renderWebsiteIpc(element, website);
+      };
+      element.textContent = "备案信息检测失败，点击重新检测";
+      element.className = "__website_value_loading";
+    }
+  }
+
+  async function renderWebsiteWhois(element, website) {
+    try {
+      element.onclick = null;
+      element.textContent = "检测中⌛︎";
+      element.className = "__website_value_loading";
+      if (website.length <= 1) {
+        //找不到网址，会显示-符号
+        element.textContent = "-";
+        element.className = "";
+      } else {
+        let url = `https://whois.chinaz.com/${encodeURIComponent(website)}`;
+        const response = await makeGetRequest(url);
+        const result = response.responseText;
+        let groups = result.match(
+          /注册时间[\s\S]*<\/div>[\s\S]*<div item-value>(?<registDate>.*)<\/div>[\s\S]*/
+        )?.groups;
+        if (groups && groups.registDate) {
+          let date = dayjs(
+            groups.registDate
+              .replaceAll("年", "-")
+              .replaceAll("月", "-")
+              .replaceAll("日", "")
+          );
+          element.textContent = convertTimeOffsetToHumanReadable(date);
+          element.title = date.format("YYYY-MM-DD");
+          element.className = "";
+        } else {
+          element.textContent = "未找到";
+          element.clasName = "__website_value_error";
+        }
+      }
+    } catch (e) {
+      console.error(e);
+      element.onclick = (event) => {
+        renderWebsiteWhois(element, website);
+      };
+      element.textContent = "检测失败，点击重新检测";
+      element.className = "__website_value_loading";
+    }
+  }
+
+  async function renderWebsiteStatus(element, website) {
+    try {
+      element.onclick = null;
+      element.textContent = "检测中⌛︎";
+      element.className = "__website_value_loading";
+      if (website.length <= 1) {
+        //找不到网址，会显示-符号
+        element.textContent = "-";
+        element.className = "";
+      } else {
+        let url = `https://tool.chinaz.com/pagestatus/?url=${encodeURIComponent(
+          autoFillHttp(website)
+        )}`;
+        const response = await makeGetRequest(url);
+        const result = response.responseText;
+        let groups = result.match(
+          /<!--IcpMain02-begin-->[\s\S]*返回状态码[\s\S]*<span>(?<stateCode>.*)<\/span>[\s\S]*<!--IcpMain02-end-->/
+        )?.groups;
+        if (groups && groups.stateCode) {
+          element.textContent = "可访问";
+          element.style = "background-color:yellowgreen;color:white;";
+        } else {
+          element.textContent = "不可访问";
+          element.style = "background-color:red;color:white;";
+        }
+      }
+    } catch (e) {
+      console.error(e);
+      element.onclick = (event) => {
+        renderWebsiteStatus(element, website);
+      };
+      element.textContent = "不可访问";
+      element.className = "__website_value_loading";
+    }
   }
 
   async function getCompanyInfoByAiqicha(keyword) {
@@ -2028,6 +2248,18 @@ function isOutsource(brandName) {
     let govLabelDiv = document.createElement("div");
     govLabelDiv.className = "__company_info_quick_search_item_label";
     govLabelDiv.innerHTML = "- 政府渠道";
+    govDiv.appendChild(
+      createATagWithSearch(
+        `https://beian.miit.gov.cn/#/Integrated/recordQuery`,
+        "工信部"
+      )
+    );
+    govDiv.appendChild(
+      createATagWithSearch(
+        `https://www.creditchina.gov.cn/xinyongxinxixiangqing/xyDetail.html?keyword=${decode}`,
+        "信用中国"
+      )
+    );
     govDiv.appendChild(
       createATagWithSearch(
         `https://www.gsxt.gov.cn/corp-query-homepage.html`,
@@ -2219,6 +2451,99 @@ function isOutsource(brandName) {
     bossName;
     bossCompanyName;
     bossPosition;
+    createDatetime;
+    updateDatetime;
+  }
+
+  class Company {
+    /**
+     * 编号
+     */
+    companyId;
+    /**
+     * 公司名
+     */
+    companyName;
+    /**
+     * 公司描述
+     */
+    companyDesc;
+    /**
+     * 成立时间
+     */
+    companyStartDate;
+    /**
+     * 经营状态
+     */
+    companyStatus;
+    /**
+     * 法人
+     */
+    companyLegalPerson;
+    /**
+     * 统一社会信用代码
+     */
+    companyUnifiedCode;
+    /**
+     * 官网
+     */
+    companyWebSite;
+    /**
+     * 社保人数
+     */
+    companyInsuranceNum;
+    /**
+     * 自身风险数
+     */
+    companySelfRisk;
+    /**
+     * 关联风险数
+     */
+    companyUnionRisk;
+    /**
+     * 地址
+     */
+    companyAddress;
+    /**
+     * 经营范围
+     */
+    companyScope;
+    /**
+     * 纳税人识别号
+     */
+    companyTaxNo;
+    /**
+     * 所属行业
+     */
+    companyIndustry;
+    /**
+     * 工商注册号
+     */
+    companyLicenseNumber;
+    /**
+     * 经度
+     */
+    companyLongitude;
+    /**
+     * 维度
+     */
+    companyLatitude;
+    /**
+     * 数据来源地址
+     */
+    sourceUrl;
+    /**
+     * 数据来源平台
+     */
+    sourcePlatform;
+    /**
+     * 数据来源记录编号
+     */
+    sourceRecordId;
+    /**
+     * 数据来源更新时间
+     */
+    sourceRefreshDatetime;
     createDatetime;
     updateDatetime;
   }
@@ -2672,6 +2997,43 @@ function isOutsource(brandName) {
     return jobs;
   }
 
+  function handleAiqichaData(source) {
+    let company = new Company();
+    company.companyName = companyNameConvert(source.entName);
+    company.companyDesc = source.describe;
+    company.companyStartDate = convertDateStringToDateObject(source.startDate);
+    company.companyStatus = source.openStatus;
+    company.companyLegalPerson = source.legalPerson;
+    company.companyUnifiedCode = source.unifiedCode;
+    company.companyWebSite = source.website;
+    company.companyInsuranceNum = source?.insuranceInfo?.insuranceNum;
+    company.companySelfRisk = source.selfRiskTotal;
+    company.companyUnionRisk = source.unionRiskTotal;
+    company.companyAddress = source.addr;
+    company.companyScope = source.scope;
+    company.companyTaxNo = source.taxNo;
+    company.companyIndustry = source.industry;
+    company.companyLicenseNumber = source.licenseNumber;
+    company.companyLongitude = source?.geoInfo?.lng;
+    company.companyLatitude = source?.geoInfo.lat;
+    company.sourceUrl = source.sourceUrl;
+    company.sourcePlatform = PLATFORM_AIQICHA;
+    company.sourceRecordId = source.pid;
+    company.sourceRefreshDatetime = convertDateStringToDateObject(
+      source.refreshTime
+    );
+    return company;
+  }
+
+  /**
+   * 转换公司名称，中文括号转为英文括号
+   * @param {string} name
+   * @returns
+   */
+  function companyNameConvert(name) {
+    return name.replaceAll("（", "(").replaceAll("）", ")");
+  }
+
   console.log("[setup] handler");
   //handler
   const handler = {
@@ -2902,7 +3264,7 @@ function isOutsource(brandName) {
               });
             })
             .catch((error) => {
-              console.log(error);
+              console.error(error);
               hiddenLoadingDOM();
             });
         }
