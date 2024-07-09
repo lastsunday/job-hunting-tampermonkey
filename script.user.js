@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         job-hunting
 // @namespace    https://github.com/lastsunday/job-hunting-tampermonkey/
-// @version      1.5.0
+// @version      1.5.1
 // @description  协助找工作，方便职位的浏览
 // @author       lastsunday
 // @license      MIT
@@ -179,11 +179,14 @@ div[data-search-sol-meta] {
 
 .__BOSS_function_panel {
   padding-left: 10px;
+  padding-bottom: 10px;
+  margin-right: 10px;
 }
 
 .__51JOB_function_panel {
   margin-left: -10px;
   margin-top: 5px;
+  margin-right: 12px;
 }
 
 .__ZHILIAN_function_panel {
@@ -270,6 +273,12 @@ div[data-search-sol-meta] {
   background-color: black;
   color: white;
   font-size: 12px;
+}
+
+.__ZHILIAN_job_item {
+  position: relative;
+  padding-left: 20px;
+  padding-bottom: 10px;
 }
 `;
 
@@ -1647,11 +1656,19 @@ function isOutsource(brandName) {
     if (!node) return;
     node.style = "display:flex;flex-direction: column;";
     //for zhilian
+    const jobListItemList = node.querySelectorAll(".joblist-item");
+    if(jobListItemList && jobListItemList.length > 0){
+      for(let i=0;i<jobListItemList.length;i++){
+        let item = jobListItemList[i];
+        item.classList.add("__ZHILIAN_job_item");
+      }
+    }
     const paginationNode = node.querySelector(".pagination");
     if (paginationNode) {
       paginationNode.style = "order:99999;";
     }
   }
+  
   function createLoadingDOM(brandName, styleClass) {
     const div = document.createElement("div");
     div.classList.add(styleClass);
