@@ -15,6 +15,7 @@
 // @connect      tool.chinaz.com
 // @connect      whois.chinaz.com
 // @connect      icp.aizhan.com
+// @connect      job.me88.top
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
 // @compatible   firefox Tampermonkey
@@ -1657,8 +1658,8 @@ function isOutsource(brandName) {
     node.style = "display:flex;flex-direction: column;";
     //for zhilian
     const jobListItemList = node.querySelectorAll(".joblist-item");
-    if(jobListItemList && jobListItemList.length > 0){
-      for(let i=0;i<jobListItemList.length;i++){
+    if (jobListItemList && jobListItemList.length > 0) {
+      for (let i = 0; i < jobListItemList.length; i++) {
         let item = jobListItemList[i];
         item.classList.add("__ZHILIAN_job_item");
       }
@@ -1668,7 +1669,7 @@ function isOutsource(brandName) {
       paginationNode.style = "order:99999;";
     }
   }
-  
+
   function createLoadingDOM(brandName, styleClass) {
     const div = document.createElement("div");
     div.classList.add(styleClass);
@@ -1966,9 +1967,8 @@ function isOutsource(brandName) {
     if (company.companyWebSite && company.companyWebSite.length > 1) {
       websiteElement = `<a href="${autoFillHttp(
         company.companyWebSite
-      )}" target = "_blank"; ref = "noopener noreferrer">${
-        company.companyWebSite
-      }</a>`;
+      )}" target = "_blank"; ref = "noopener noreferrer">${company.companyWebSite
+        }</a>`;
     } else {
       websiteElement = "-";
     }
@@ -2009,8 +2009,7 @@ function isOutsource(brandName) {
       $(`<div class="__company_info_quick_search_item"></div>`)
         .append(
           $(
-            `<div><div class="__company_info_quick_search_item_label">社保人数：</div>${
-              company.companyInsuranceNum ?? "-"
+            `<div><div class="__company_info_quick_search_item_label">社保人数：</div>${company.companyInsuranceNum ?? "-"
             }</div>`
           )
         )
@@ -2302,11 +2301,14 @@ function isOutsource(brandName) {
     dom.className = "__company_info_quick_search_item";
     let labelDiv = document.createElement("div");
     labelDiv.className = "__company_info_quick_search_item_label";
-    labelDiv.innerHTML = "公司风评检测：";
+    labelDiv.textContent = "公司风评检测：";
     dom.appendChild(labelDiv);
     const ruobilinDiv = document.createElement("div");
     dom.appendChild(ruobilinDiv);
     asyncRenderRuobilin(ruobilinDiv, keyword);
+    const itJobBlackListDiv = document.createElement("div");
+    dom.appendChild(itJobBlackListDiv);
+    asyncRenderITJobBlackList(itJobBlackListDiv, keyword);
     return dom;
   }
 
@@ -2324,7 +2326,7 @@ function isOutsource(brandName) {
       }
     );
     div.appendChild(loaddingTag);
-    renderRuobilinColor(loaddingTag, "black");
+    renderCompanyReputationColor(loaddingTag, "black");
     try {
       const result = await makeGetRequest(url);
       let hyperlinks = $(result.responseText).find(".ap-questions-hyperlink");
@@ -2334,15 +2336,14 @@ function isOutsource(brandName) {
         const count = hyperlinks.length;
         let tag = createATag("📡", url, `若比邻黑名单(疑似${count}条记录)`);
         div.appendChild(tag);
-        renderRuobilinColor(tag, "red");
+        renderCompanyReputationColor(tag, "red");
       } else {
         //不存在
         let tag = createATag("📡", url, "若比邻黑名单(无记录)");
         div.appendChild(tag);
-        renderRuobilinColor(tag, "yellowgreen");
+        renderCompanyReputationColor(tag, "yellowgreen");
       }
     } catch (e) {
-      console.error(e);
       clearAllChildNode(div);
       const errorDiv = createATag(
         "📡",
@@ -2356,7 +2357,56 @@ function isOutsource(brandName) {
       errorDiv.href = "javaScript:void(0);";
       errorDiv.target = "";
       div.appendChild(errorDiv);
-      renderRuobilinColor(errorDiv, "black");
+      renderCompanyReputationColor(errorDiv, "black");
+    }
+  }
+
+  async function asyncRenderITJobBlackList(div, keyword) {
+    div.title = "信息来源:互联网企业黑名单 https://job.me88.top/";
+    const decode = encodeURIComponent(keyword);
+    const url = `https://job.me88.top/index.php/search/=${decode}`;
+    const loaddingTag = createATag(
+      "📡",
+      url,
+      "互联网企业黑名单(检测中⌛︎)",
+      (event) => {
+        clearAllChildNode(div);
+        asyncRenderITJobBlackList(div, keyword);
+      }
+    );
+    div.appendChild(loaddingTag);
+    renderCompanyReputationColor(loaddingTag, "black");
+    try {
+      const result = await makeGetRequest(url);
+      let hyperlinks = $(result.responseText).find("div[class=\"post-box paddingall\"]");
+      clearAllChildNode(div);
+      if (hyperlinks && hyperlinks.length > 0) {
+        //存在于黑名单
+        const count = hyperlinks.length;
+        let tag = createATag("📡", url, `互联网企业黑名单(疑似${count}条记录)`);
+        div.appendChild(tag);
+        renderCompanyReputationColor(tag, "red");
+      } else {
+        //不存在
+        let tag = createATag("📡", url, "互联网企业黑名单(无记录)");
+        div.appendChild(tag);
+        renderCompanyReputationColor(tag, "yellowgreen");
+      }
+    } catch (e) {
+      clearAllChildNode(div);
+      const errorDiv = createATag(
+        "📡",
+        url,
+        "互联网企业黑名单(检测失败，点击重新检测)",
+        (event) => {
+          clearAllChildNode(div);
+          asyncRenderITJobBlackList(div, keyword);
+        }
+      );
+      errorDiv.href = "javaScript:void(0);";
+      errorDiv.target = "";
+      div.appendChild(errorDiv);
+      renderCompanyReputationColor(errorDiv, "black");
     }
   }
 
@@ -2364,12 +2414,8 @@ function isOutsource(brandName) {
     div.innerHTML = "";
   }
 
-  function renderRuobilinColor(div, color) {
+  function renderCompanyReputationColor(div, color) {
     div.style = `background-color:${color};color:white`;
-  }
-
-  function clearRuobilinColor(div) {
-    div.style = null;
   }
 
   function createATagWithSearch(url, label) {
