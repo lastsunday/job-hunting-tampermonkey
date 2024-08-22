@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         job-hunting
 // @namespace    https://github.com/lastsunday/job-hunting-tampermonkey/
-// @version      1.6.0
+// @version      1.6.1
 // @description  协助找工作，方便职位的浏览
 // @author       lastsunday
 // @license      MIT
 // @match        https://we.51job.com/pc/search*
 // @match        https://www.zhipin.com/web/geek/job*
-// @match        https://sou.zhaopin.com/*
+// @match        https://www.zhaopin.com/*
 // @match        https://www.lagou.com/wn/*
 // @match        https://www.liepin.com/*
 // @connect      kjxb.org
@@ -1341,7 +1341,7 @@ function isOutsource(brandName) {
   });
 
   window.unsafeWindow.addEventListener("proxyScriptLoaded", async function (e) {
-    if (location.host === "sou.zhaopin.com") {
+    if (location.host === "www.zhaopin.com") {
       // 智联招聘首次打开
       const data = e?.detail?.zhipin?.initialState;
       handler.zhilian.build().handleFirstTimeOpen(data || {});
