@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         job-hunting
 // @namespace    https://github.com/lastsunday/job-hunting-tampermonkey/
-// @version      1.6.0
+// @version      1.6.1
 // @description  协助找工作，方便职位的浏览
 // @author       lastsunday
 // @license      MIT
