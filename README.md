@@ -2,6 +2,12 @@
 
 协助找工作，方便职位浏览的油猴脚本
 
+## 项目暂停维护
+
+由于个人项目时间安排的原因，该脚本暂停维护，给您造成不便，请见谅。
+
+如希望体验类似的工具，可尝试 https://github.com/lastsunday/job-hunting 这个chrome插件。
+
 ## 源码地址
 
 <https://github.com/lastsunday/job-hunting-tampermonkey>
